@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import http, { type Server as HttpServer } from "http";
 import cors from "cors";
 import router from "../routes/user.route";
+import router1 from "../routes/room.route";
 
 type ServerInstance = {
   app: Express;
@@ -19,6 +20,7 @@ export function createServer(): ServerInstance {
   });
 
   app.use("/api/v1/user", router);
+  app.use("/api/v1/room", router1);
 
   const server = http.createServer(app);
 
