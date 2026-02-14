@@ -6,11 +6,11 @@
   "main": "./index.ts",
   "types": "./index.ts",
   "dependencies": {
-    "@prisma/client": "^7.4.0",
+    "@prisma/client": "6",
     "dotenv": "^17.3.1"
   },
   "devDependencies": {
-    "prisma": "^7.4.0",
+    "prisma": "6",
     "typescript": "^5"
   }
 }
