@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import http, { type Server as HttpServer } from "http";
 import cors from "cors";
+import router from "../routes/user.route";
 
 type ServerInstance = {
   app: Express;
@@ -16,6 +17,8 @@ export function createServer(): ServerInstance {
   app.get("/health", (_, res) => {
     res.status(200).json({ status: "ok", service: "DevSync Backend" });
   });
+
+  app.use("/api/v1/user", router);
 
   const server = http.createServer(app);
 
