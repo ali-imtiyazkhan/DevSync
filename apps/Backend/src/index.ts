@@ -31,6 +31,30 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("room-users", Array.from(rooms[roomId]));
   });
 
+  // WebRTC Offer
+  socket.on("offer", ({ roomId, offer }) => {
+    socket.to(roomId).emit("offer", {
+      offer,
+      from: socket.id,
+    });
+  });
+
+  // WebRTC Answer
+  socket.on("answer", ({ roomId, answer }) => {
+    socket.to(roomId).emit("answer", {
+      answer,
+      from: socket.id,
+    });
+  });
+
+  // ICE Candidates
+  socket.on("ice-candidate", ({ roomId, candidate }) => {
+    socket.to(roomId).emit("ice-candidate", {
+      candidate,
+      from: socket.id,
+    });
+  });
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
 
