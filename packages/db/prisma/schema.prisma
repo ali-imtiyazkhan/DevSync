@@ -7,8 +7,41 @@ datasource db {
 }
 
 model User {
-  id       String @id @default(uuid())
-  name     String
-  email    String @unique
-  password String
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+
+  roomsOwned Room[]            @relation("OwnerRooms")
+  rooms      RoomParticipant[]
+}
+
+model Room {
+  id        String   @id @default(uuid())
+  name      String?
+  ownerId   String
+  createdAt DateTime @default(now())
+
+  owner        User              @relation("OwnerRooms", fields: [ownerId], references: [id])
+  participants RoomParticipant[]
+}
+
+model RoomParticipant {
+  id       String   @id @default(uuid())
+  userId   String
+  roomId   String
+  role     Role     @default(PARTICIPANT)
+  joinedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@unique([userId, roomId])
+}
+
+enum Role {
+  OWNER
+  PARTICIPANT
+  EDITOR
 }

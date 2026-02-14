@@ -115,7 +115,7 @@ export default function Home() {
 
     peerConnection.current.addTrack(screenTrack, screenStream);
 
-    // 🔥 renegotiate
+    // renegotiate
     const offer = await peerConnection.current.createOffer();
     await peerConnection.current.setLocalDescription(offer);
 
