@@ -1,17 +1,16 @@
 {
-  "name": "db",
-  "module": "index.ts",
-  "type": "module",
+  "name": "@devsync/db",
   "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
   "dependencies": {
     "@prisma/client": "^7.4.0",
-    "dotenv": "^17.3.1",
-    "prisma": "^7.4.0"
+    "dotenv": "^17.3.1"
+  },
+  "devDependencies": {
+    "prisma": "^7.4.0",
+    "typescript": "^5"
   }
 }
