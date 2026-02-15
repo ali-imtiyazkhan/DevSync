@@ -37,7 +37,6 @@ router1.post("/create", async (req: Request, res: Response) => {
   }
 });
 
-
 router1.post("/:roomId/join", async (req: Request, res: Response) => {
   try {
     const roomId = String(req.params.roomId);
@@ -69,7 +68,6 @@ router1.post("/:roomId/join", async (req: Request, res: Response) => {
   }
 });
 
-
 router1.get("/:roomId", async (req: Request, res: Response) => {
   try {
     const roomId = String(req.params.roomId);
@@ -96,7 +94,6 @@ router1.get("/:roomId", async (req: Request, res: Response) => {
   }
 });
 
-
 router1.post("/:roomId/leave", async (req: Request, res: Response) => {
   try {
     const roomId = String(req.params.roomId);
@@ -117,7 +114,6 @@ router1.post("/:roomId/leave", async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to leave room" });
   }
 });
-
 
 router1.delete("/:roomId", async (req: Request, res: Response) => {
   try {
