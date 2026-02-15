@@ -1,8 +1,8 @@
 import express, { type Express } from "express";
 import http, { type Server as HttpServer } from "http";
 import cors from "cors";
-import router from "../routes/user.route";
-import router1 from "../routes/room.route";
+import router from "./routes/user.route";
+import router1 from "./routes/room.route";
 
 type ServerInstance = {
   app: Express;

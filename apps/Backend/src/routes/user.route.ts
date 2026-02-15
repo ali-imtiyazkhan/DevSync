@@ -4,7 +4,7 @@ import {
   generateToken,
   hashPassword,
   comparePassword,
-} from "../src/utils/auth";
+} from "../utils/auth";
 
 const router = Router();
 
