@@ -1,146 +1,208 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
 import { prisma, Role } from "@devsync/db";
+import { authenticate, AuthRequest } from "../middleware/auth.middleware";
 
-const router1: Router = Router();
+const router = Router();
 
-router1.post("/create", async (req: Request, res: Response) => {
-  try {
-    const { ownerId, name } = req.body as {
-      ownerId: string;
-      name?: string;
-    };
+router.post(
+  "/create",
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { name } = req.body;
+      const userId = req.user!.userId;
 
-    if (!ownerId) {
-      return res.status(400).json({ message: "ownerId is required" });
-    }
+      const room = await prisma.$transaction(async (tx) => {
+        const createdRoom = await tx.room.create({
+          data: {
+            name,
+            ownerId: userId,
+          },
+        });
 
-    const room = await prisma.room.create({
-      data: {
-        name,
-        ownerId,
-        participants: {
-          create: {
-            userId: ownerId,
+        await tx.roomParticipant.create({
+          data: {
+            userId,
+            roomId: createdRoom.id,
             role: Role.OWNER,
           },
-        },
-      },
-      include: {
-        participants: true,
-      },
-    });
+        });
 
-    res.status(201).json(room);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to create room" });
-  }
-});
+        return createdRoom;
+      });
 
-router1.post("/:roomId/join", async (req: Request, res: Response) => {
-  try {
-    const roomId = String(req.params.roomId);
-    const { userId } = req.body as { userId: string };
-
-    if (!userId) {
-      return res.status(400).json({ message: "userId is required" });
+      return res.status(201).json(room);
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to create room" });
     }
+  },
+);
 
-    const participant = await prisma.roomParticipant.upsert({
-      where: {
-        userId_roomId: {
+router.post(
+  "/:roomId/join",
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const roomId = req.params.roomId as string;
+      const userId = req.user!.userId;
+
+      const roomExists = await prisma.room.findUnique({
+        where: { id: roomId },
+      });
+
+      if (!roomExists) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+
+      const participant = await prisma.roomParticipant.upsert({
+        where: {
+          userId_roomId: { userId, roomId },
+        },
+        update: {},
+        create: {
           userId,
           roomId,
+          role: Role.PARTICIPANT,
         },
-      },
-      update: {},
-      create: {
-        userId,
-        roomId,
-        role: Role.PARTICIPANT,
-      },
-    });
+      });
 
-    res.status(200).json(participant);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to join room" });
-  }
-});
+      return res.status(200).json(participant);
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to join room" });
+    }
+  },
+);
 
-router1.get("/:roomId", async (req: Request, res: Response) => {
-  try {
-    const roomId = String(req.params.roomId);
+router.get(
+  "/:roomId",
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const roomId = req.params.roomId as string;
 
-    const room = await prisma.room.findUnique({
-      where: { id: roomId },
-      include: {
-        participants: {
-          include: {
-            user: true,
+      const userId = req.user!.userId;
+
+      const membership = await prisma.roomParticipant.findUnique({
+        where: {
+          userId_roomId: { userId, roomId },
+        },
+      });
+
+      if (!membership) {
+        return res.status(403).json({ message: "Not a member of this room" });
+      }
+
+      const room = await prisma.room.findUnique({
+        where: { id: roomId },
+        include: {
+          participants: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!room) {
-      return res.status(404).json({ message: "Room not found" });
+      return res.status(200).json(room);
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to fetch room" });
     }
+  },
+);
 
-    res.status(200).json(room);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to fetch room" });
-  }
-});
+router.post(
+  "/:roomId/leave",
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const roomId = req.params.roomId as string;
 
-router1.post("/:roomId/leave", async (req: Request, res: Response) => {
-  try {
-    const roomId = String(req.params.roomId);
-    const { userId } = req.body as { userId: string };
+      const userId = req.user!.userId;
 
-    await prisma.roomParticipant.delete({
-      where: {
-        userId_roomId: {
-          userId,
-          roomId,
+      const room = await prisma.room.findUnique({
+        where: { id: roomId },
+      });
+
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+
+      if (room.ownerId === userId) {
+        return res.status(400).json({
+          message: "Owner cannot leave the room. Transfer ownership first.",
+        });
+      }
+
+      await prisma.roomParticipant.delete({
+        where: {
+          userId_roomId: { userId, roomId },
         },
-      },
-    });
+      });
 
-    res.status(200).json({ message: "Left room successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to leave room" });
-  }
-});
-
-router1.delete("/:roomId", async (req: Request, res: Response) => {
-  try {
-    const roomId = String(req.params.roomId);
-    const { userId } = req.body as { userId: string };
-
-    const room = await prisma.room.findUnique({
-      where: { id: roomId },
-    });
-
-    if (!room) {
-      return res.status(404).json({ message: "Room not found" });
+      return res.status(200).json({ message: "Left room successfully" });
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to leave room" });
     }
+  },
+);
 
-    if (room.ownerId !== userId) {
-      return res.status(403).json({ message: "Only owner can delete room" });
+router.delete(
+  "/:roomId",
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const roomId = req.params.roomId as string;
+
+      const userId = req.user!.userId;
+
+      const room = await prisma.room.findUnique({
+        where: { id: roomId },
+      });
+
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+
+      if (room.ownerId !== userId) {
+        return res.status(403).json({ message: "Only owner can delete room" });
+      }
+
+      await prisma.room.delete({
+        where: { id: roomId },
+      });
+
+      return res.status(200).json({ message: "Room deleted successfully" });
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to delete room" });
     }
+  },
+);
 
-    await prisma.room.delete({
-      where: { id: roomId },
-    });
+router.get(
+  "/my/rooms",
+  authenticate,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
 
-    res.status(200).json({ message: "Room deleted successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to delete room" });
-  }
-});
+      const rooms = await prisma.roomParticipant.findMany({
+        where: { userId },
+        include: {
+          room: true,
+        },
+      });
 
-export default router1;
+      return res.status(200).json(rooms);
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to fetch user rooms" });
+    }
+  },
+);
+
+export default router;
