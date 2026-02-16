@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-
-const socket: Socket = io("http://localhost:5000");
+import Editor from "@monaco-editor/react";
+import * as Y from "yjs";
 
 export default function Home() {
   const [roomId, setRoomId] = useState("");
   const [joined, setJoined] = useState(false);
+
+  const socketRef = useRef<Socket | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localScreenRef = useRef<HTMLVideoElement>(null);
@@ -15,16 +17,32 @@ export default function Home() {
   const remoteScreenRef = useRef<HTMLVideoElement>(null);
 
   const peerConnection = useRef<RTCPeerConnection | null>(null);
-
   const cameraStreamRef = useRef<MediaStream | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
+
+  // CRDT refs
+  const editorRef = useRef<any>(null);
+  const ydocRef = useRef<Y.Doc | null>(null);
+  const ytextRef = useRef<Y.Text | null>(null);
+  const bindingRef = useRef<any>(null);
+
+  // Initialize socket safely
+  useEffect(() => {
+    socketRef.current = io("http://localhost:5000");
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
+    if (!socketRef.current) return;
+
+    const socket = socketRef.current;
+
     socket.on("offer", async ({ offer }) => {
       if (!peerConnection.current) return;
 
       await peerConnection.current.setRemoteDescription(offer);
-
       const answer = await peerConnection.current.createAnswer();
       await peerConnection.current.setLocalDescription(answer);
 
@@ -41,17 +59,17 @@ export default function Home() {
       await peerConnection.current.addIceCandidate(candidate);
     });
 
-    return () => {
-      socket.disconnect();
-    };
   }, [roomId]);
 
   const joinRoom = async () => {
-    if (!roomId) return;
+    if (!roomId || !socketRef.current) return;
+
+    const socket = socketRef.current;
 
     socket.emit("join-room", roomId);
     setJoined(true);
 
+    //CAMERA SETUP
     const stream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: true,
@@ -73,13 +91,11 @@ export default function Home() {
 
     peerConnection.current.ontrack = (event) => {
       const [stream] = event.streams;
-
       if (!stream) return;
 
-      // If video track → camera
-      if (event.track.kind === "video" && !remoteVideoRef.current?.srcObject) {
+      if (!remoteVideoRef.current?.srcObject) {
         remoteVideoRef.current!.srcObject = stream;
-      } else if (event.track.kind === "video") {
+      } else {
         remoteScreenRef.current!.srcObject = stream;
       }
     };
@@ -97,10 +113,36 @@ export default function Home() {
     await peerConnection.current.setLocalDescription(offer);
 
     socket.emit("offer", { roomId, offer });
+
+    // ===== CRDT SETUP =====
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText("monaco");
+
+    ydocRef.current = ydoc;
+    ytextRef.current = ytext;
+
+    ydoc.on("update", (update) => {
+      socket.emit("code-update", {
+        roomId,
+        update,
+      });
+    });
+
+    socket.on("code-update", (update) => {
+      Y.applyUpdate(ydoc, new Uint8Array(update));
+    });
+
+    socket.emit("request-initial-state", roomId);
+
+    socket.on("initial-state", (state) => {
+      Y.applyUpdate(ydoc, new Uint8Array(state));
+    });
   };
 
   const shareScreen = async () => {
-    if (!peerConnection.current) return;
+    if (!peerConnection.current || !socketRef.current) return;
+
+    const socket = socketRef.current;
 
     const screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
@@ -115,22 +157,15 @@ export default function Home() {
 
     peerConnection.current.addTrack(screenTrack, screenStream);
 
-    // renegotiate
     const offer = await peerConnection.current.createOffer();
     await peerConnection.current.setLocalDescription(offer);
 
     socket.emit("offer", { roomId, offer });
-
-    screenTrack.onended = () => {
-      console.log("Screen sharing stopped");
-    };
   };
-
-
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>DevSync - Phase 3</h1>
+      <h1 style={styles.title}>DevSync - CRDT + WebRTC</h1>
 
       {!joined ? (
         <div style={styles.joinBox}>
@@ -158,6 +193,29 @@ export default function Home() {
             <VideoCard title="My Screen" videoRef={localScreenRef} />
             <VideoCard title="Friend Screen" videoRef={remoteScreenRef} />
           </div>
+
+          {/* ===== MONACO EDITOR ===== */}
+          <div style={{ marginTop: 30, height: "400px" }}>
+            <Editor
+              height="100%"
+              defaultLanguage="javascript"
+              theme="vs-dark"
+              defaultValue="// DevSync Collaborative Editor"
+              onMount={async (editor) => {
+                editorRef.current = editor;
+
+                if (!ytextRef.current || !ydocRef.current) return;
+
+                const { MonacoBinding } = await import("y-monaco");
+
+                bindingRef.current = new MonacoBinding(
+                  ytextRef.current,
+                  editor.getModel()!,
+                  new Set([editor]),
+                );
+              }}
+            />
+          </div>
         </>
       )}
     </div>
@@ -173,7 +231,6 @@ function VideoCard({
   videoRef: React.RefObject<HTMLVideoElement | null>;
   muted?: boolean;
 }) {
-
   return (
     <div style={styles.card}>
       <h3 style={styles.cardTitle}>{title}</h3>
